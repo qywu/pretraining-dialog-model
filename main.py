@@ -11,9 +11,12 @@ from torch.utils.tensorboard import SummaryWriter
 from allennlp.training.checkpointer import Checkpointer
 import logging
 
-from torchfly.transformers import UnifiedTokenizer, GPT2SimpleLM
-from torchfly.utils import get_pretrained, init_logging
-from transformers import AdamW, WarmupLinearSchedule
+# from torchfly.transformers import UnifiedTokenizer, GPT2SimpleLM
+# from torchfly.utils import get_pretrained, init_logging
+# from transformers import AdamW, WarmupLinearSchedule
+
+from transformers import AdamW, GPT2LMHeadModel, GPT2TokenizerFast, get_linear_schedule_with_warmup
+
 
 from dialog_utils import DialogFragmentSampler
 from distributed_utils import DistributedManager
@@ -88,12 +91,12 @@ def batch_to_device(batch, device):
 
 
 if __name__ == '__main__':
-    init_logging()
+
     args = parse_args()
     manager = DistributedManager(args)
 
     # define the tokenizer
-    tokenizer = UnifiedTokenizer()
+    tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
     # construct dataset
     with open("dialog_corpus.json") as f:
@@ -126,9 +129,9 @@ if __name__ == '__main__':
     if args.warmup_steps < 0:
         args.warmup_steps = int(args.warmup_ratio * len(train_dataset))
 
-    scheduler = WarmupLinearSchedule(optimizer,
-                                     warmup_steps=args.warmup_steps,
-                                     t_total=num_train_optimization_steps)
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer, num_warmup_steps=500, num_training_steps=num_train_optimization_steps
+    )
 
     manager.init_training(model, optimizer)
 

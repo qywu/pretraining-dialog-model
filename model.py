@@ -3,14 +3,14 @@ import torch
 import torch.nn as nn
 import logging
 
-from transformers import AdamW, WarmupLinearSchedule
-from torchfly.transformers import UnifiedTokenizer, GPT2SimpleLM, UnifiedGPT2SmallConfig
-from torchfly.utils import get_pretrained, init_logging
-from torchfly.criterions import SequenceCrossEntropyLoss
+from transformers import AdamW, GPT2LMHeadModel, GPT2TokenizerFast, get_linear_schedule_with_warmup
 
 import utils
 
-init_logging()
+# pylint:disable=no-member
+
+# simple logger
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
@@ -55,16 +55,16 @@ class ARDM(nn.Module):
         self.args = args
 
         # define the two language models
-        self.model_A = GPT2SimpleLM(UnifiedGPT2SmallConfig)
-        self.model_B = GPT2SimpleLM(UnifiedGPT2SmallConfig)
+        self.model_A = GPT2LMHeadModel.from_pretrained("gpt2")
+        self.model_B = GPT2LMHeadModel.from_pretrained("gpt2")
         # language model KL
-        self.language_model = GPT2SimpleLM(UnifiedGPT2SmallConfig)
+        self.language_model = GPT2LMHeadModel.from_pretrained("gpt2")
         # load weights
-        self.model_A.load_state_dict(get_pretrained("unified-gpt2-small"))
-        self.model_B.load_state_dict(get_pretrained("unified-gpt2-small"))
-        self.language_model.load_state_dict(
-            get_pretrained("unified-gpt2-small")
-        )
+        # self.model_A.load_state_dict(get_pretrained("unified-gpt2-small"))
+        # self.model_B.load_state_dict(get_pretrained("unified-gpt2-small"))
+        # self.language_model.load_state_dict(
+        #     get_pretrained("unified-gpt2-small")
+        # )
         # freeze weights
         utils.freeze_model(self.language_model)
 
@@ -148,7 +148,7 @@ if __name__ == "__main__":
         "B:No, I didn't. is it good?",
         "A:Yes, it is good. you should watch it.",
     ]
-    tokenizer = UnifiedTokenizer()
+    tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 
     device = torch.device("cuda")
     model = ARDM(args)
@@ -184,16 +184,17 @@ if __name__ == "__main__":
     # dialog = dialog_to_tensor(tokenizer, dialog, device)
     optimizer = AdamW(optimizer_grouped_parameters, lr=1e-3, eps=1e-06)
 
-    scheduler = WarmupLinearSchedule(
-        optimizer, warmup_steps=500, t_total=num_train_optimization_steps
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer, num_warmup_steps=500, num_training_steps=num_train_optimization_steps
     )
 
     for i in range(1000):
-        dialog = [
-            torch.LongTensor([np.arange(200)]).to(device) for i in range(5)
-        ]
+        dialog = {
+            "input_ids" : [torch.LongTensor([np.arange(200)]).to(device) for i in range(5)],
+            "position_ids" : [torch.LongTensor([np.arange(200)]).to(device) for i in range(5)]
+            }
 
-        loss, kl = model.train_one_dialog(dialog)
+        loss, kl = model.train_one_step(dialog)
 
         optimizer.zero_grad()
         loss.backward()
